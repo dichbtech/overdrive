@@ -92,7 +92,7 @@ textarea:focus { outline: none; border-color: var(--text-main); }
 .group-name { font-size: 11px; color: #ccc; font-weight: bold; }
 .group-date { font-size: 9px; color: #555; }
 
-/* ===== HOLOGRAMA DA IA (SURGE NO FINAL DA BUSCA) ===== */
+/* ===== HOLOGRAMA DA IA (VÍDEO YOUTUBE) ===== */
 .ai-overlay {
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -107,9 +107,42 @@ textarea:focus { outline: none; border-color: var(--text-main); }
   opacity: 1; pointer-events: all;
 }
 
-#hologramCanvas {
-  max-width: 100%;
-  max-height: 100%;
-  /* Brilho neon transferido pra placa de vídeo (zero lag) */
-  filter: drop-shadow(0 0 15px rgba(0, 240, 255, 0.6)) drop-shadow(0 0 40px rgba(0, 240, 255, 0.3));
+.hologram-wrapper {
+  position: relative;
+  width: 500px;
+  height: 500px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.3), inset 0 0 50px rgba(0,0,0,1);
+  background: radial-gradient(circle, transparent 40%, #000 70%);
+  pointer-events: none;
+}
+
+#hologramVideo {
+  position: absolute;
+  width: 250%; /* Zoom agressivo para sumir com barras do player ou letterboxing */
+  height: 250%;
+  pointer-events: none; /* Bloqueia clique para pausar ou acessar youtube */
+  /* Efeito de cor holográfica neon ciano e contraste estourado */
+  filter: sepia(100%) hue-rotate(130deg) saturate(400%) contrast(1.5) brightness(1.2);
+  mix-blend-mode: screen; /* Remove fundos muito escuros */
+  opacity: 0.85;
+}
+
+.scanlines {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 240, 255, 0.15) 3px,
+    rgba(0, 240, 255, 0.15) 4px
+  );
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 50%;
 }
