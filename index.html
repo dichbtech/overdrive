@@ -43,16 +43,20 @@
 
     <section class="filter-section">
       <div class="panel-header">
-        <h2><i class="fa-solid fa-gear"></i> CONFIGURAÇÃO DA CONFERÊNCIA (REGRAS E MODERAÇÃO)</h2>
+        <h2><i class="fa-solid fa-gear"></i> TIPO DE CONFERÊNCIA (REGRAS E EXIGÊNCIAS)</h2>
       </div>
       <div class="filter-body" style="flex-direction: column; align-items: flex-start;">
         <label class="tech-checkbox">
           <input type="radio" name="chatType" value="oficiais" checked>
-          <span>[DIC] Oficiais e Oficiais Superiores (Verifica cursos M1/M3 apenas para Executivos)</span>
+          <span>[DIC] Oficiais (Exige Militar >= Tenente OU Executivo >= Promotor + M1)</span>
+        </label>
+        <label class="tech-checkbox" style="margin-top: 10px;">
+          <input type="radio" name="chatType" value="superiores">
+          <span>[DIC] Oficiais Superiores (Exige Militar >= Major OU Executivo >= Administrador + M3)</span>
         </label>
         <label class="tech-checkbox" style="margin-top: 10px;">
           <input type="radio" name="chatType" value="pv">
-          <span>Chats PV e Acompanhamento (Exige Major ou Administrador + M3)</span>
+          <span>Chats PV e Acompanhamento (Exige Major + M3 OU Administrador + M3)</span>
         </label>
       </div>
     </section>

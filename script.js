@@ -27,15 +27,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let mapCargos = {}; 
     let mapCursos = {};
 
+    // As hierarquias corrigidas conforme solicitado
+    const hierarquiaMilitar = [
+        "cabo", "sargento", "subtenente", "aspirante", "tenente", "capitão",
+        "major", "tenente-coronel", "coronel", "inspetor", "superintendente",
+        "comandante", "comandante-geral", "supremo", "vice-presidente", "presidente"
+    ];
+
     const hierarquiaExecutiva = [
         "sócio", "agente", "analista", "coordenador", "promotor", "advogado",
         "administrador", "delegado", "investigador", "detetive", "supervisor",
-        "líder", "líder-executivo", "chanceler", "inspetor", "inspetor-chefe", "superintendente", "diretor", "diretor-fundador", "vice-presidente", "presidente"
-    ];
-
-    const hierarquiaMilitar = [
-        "soldado", "cabo", "sargento", "subtenente", "aspirante-a-oficial", "tenente",
-        "capitão", "major", "tenente-coronel", "coronel", "general", "comandante", "comandante-geral", "supremo"
+        "líder", "líder-executivo", "chanceler"
     ];
   
     // ==========================================
@@ -47,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const urlCargos = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/configuracoes/cargos?key=${apiKey}`;
         const urlCursos = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/configuracoes/cursos?key=${apiKey}`;
   
+        // Busca Cargos
         try {
             const res = await fetch(urlCargos);
             const json = await res.json();
@@ -55,8 +58,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 mapCargos = {};
                 for (let key in rawData) mapCargos[key.trim().toLowerCase()] = rawData[key].trim();
             }
-        } catch (e) {}
+        } catch (e) { console.error("Falha ao baixar cargos:", e); }
 
+        // Busca Cursos
         try {
             const res = await fetch(urlCursos);
             const json = await res.json();
@@ -65,19 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 mapCursos = {};
                 for (let key in rawData) mapCursos[key.trim().toLowerCase()] = rawData[key];
             }
-        } catch (e) {}
+        } catch (e) { console.error("Falha ao baixar cursos:", e); }
     }
   
     // ==========================================
     // LÓGICA DE API (Anti-403)
     // ==========================================
     const PROXIES = [ 
-        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`, 
-        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, 
-        (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` 
+        { url: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, type: 'json' },
+        { url: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, type: 'raw' }
     ];
     
-    // Usamos um timeout para não prender a fila em proxies inoperantes
     async function fetchWithTimeout(resource, options = {}) {
         const { timeout = 4000 } = options;
         const controller = new AbortController();
@@ -90,9 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchWithProxy(targetUrl) { 
         for (const proxy of PROXIES) { 
             try { 
-                const res = await fetchWithTimeout(proxy(targetUrl)); 
+                const res = await fetchWithTimeout(proxy.url(targetUrl)); 
                 if (!res.ok) continue; 
-                let text = await res.text();
+                let text = proxy.type === 'json' ? (await res.json()).contents : await res.text();
                 if (!text) continue;
                 try { 
                     const data = JSON.parse(text); 
@@ -121,13 +123,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatType = document.querySelector('input[name="chatType"]:checked').value;
         const upperMotto = motto.toUpperCase();
         
+        // 1. Regras Universais (Direção, Comandos e GOE)
         const globalRoles = ['INSPETOR', 'SUPERINTENDENTE', 'COMANDANTE', 'SUPREMO', 'PRESIDENTE', 'VICE-PRESIDENTE', 'PRESIDÊNCIA'];
         const isGlobalAdmin = globalRoles.some(role => upperMotto.includes(role));
         const isGoe = /\d/.test(upperMotto) && upperMotto.includes('ª');
   
         if (isGlobalAdmin || isGoe) return true;
   
-        let acronyms = chatType === 'oficiais' ? ['C.AP', 'S.AP', 'CC.AP', 'S.SP', 'VL.SP', 'L.SP'] : ['CC.AP', 'S.AP', 'C.AP'];
+        // Em oficiais e superiores, a moderação é a mesma. No PV, é diferente.
+        let acronyms = (chatType === 'oficiais' || chatType === 'superiores') ? ['C.AP', 'S.AP', 'CC.AP', 'S.SP', 'VL.SP', 'L.SP'] : ['CC.AP', 'S.AP', 'C.AP'];
         return acronyms.some(acronym => upperMotto.includes(acronym));
     }
 
@@ -141,24 +145,35 @@ document.addEventListener('DOMContentLoaded', () => {
         let isExecutivo = idxExec !== -1;
         let isMilitar = idxMil !== -1;
 
-        let isM1 = cursosDb && cursosDb.m1.toLowerCase() === "aprovado";
-        let isM3 = cursosDb && cursosDb.m3.toLowerCase() === "aprovado";
+        let isM1 = cursosDb && cursosDb.m1 && cursosDb.m1.toLowerCase() === "aprovado";
+        let isM3 = cursosDb && cursosDb.m3 && cursosDb.m3.toLowerCase() === "aprovado";
 
-        // Se não for nem militar nem executivo (Ex: Aposentado/VIP), passa.
-        if (!isExecutivo && !isMilitar) return { valid: true, msg: "REGULAR" }; 
+        // Se o cargo não está nas listas principais, o sistema ignora e valida como regular (Ex: convidados)
+        if (!isExecutivo && !isMilitar) return { valid: true, msg: "REGULAR (Outro Cargo)" }; 
 
         if (chatType === "oficiais") {
             if (isExecutivo) {
-                if (idxExec >= hierarquiaExecutiva.indexOf("administrador") && !isM3) return { valid: false, msg: "Falta M3 Aprovado" };
-                else if (idxExec >= hierarquiaExecutiva.indexOf("promotor") && !isM1) return { valid: false, msg: "Falta M1 Aprovado" };
+                if (idxExec < hierarquiaExecutiva.indexOf("promotor")) return { valid: false, msg: "Mínimo exigido: Promotor" };
+                if (!isM1) return { valid: false, msg: "Falta M1 Aprovado" };
+            } else if (isMilitar) {
+                if (idxMil < hierarquiaMilitar.indexOf("tenente")) return { valid: false, msg: "Mínimo exigido: Tenente" };
             }
-            // Militares passam livremente.
-        } else if (chatType === "pv") {
+        } 
+        else if (chatType === "superiores") {
             if (isExecutivo) {
-                if (idxExec < hierarquiaExecutiva.indexOf("administrador")) return { valid: false, msg: "Mínimo: Administrador" };
+                if (idxExec < hierarquiaExecutiva.indexOf("administrador")) return { valid: false, msg: "Mínimo exigido: Administrador" };
                 if (!isM3) return { valid: false, msg: "Falta M3 Aprovado" };
             } else if (isMilitar) {
-                if (idxMil < hierarquiaMilitar.indexOf("major")) return { valid: false, msg: "Mínimo: Major" };
+                if (idxMil < hierarquiaMilitar.indexOf("major")) return { valid: false, msg: "Mínimo exigido: Major" };
+            }
+        } 
+        else if (chatType === "pv") {
+            if (isExecutivo) {
+                if (idxExec < hierarquiaExecutiva.indexOf("administrador")) return { valid: false, msg: "Mínimo exigido: Administrador" };
+                if (!isM3) return { valid: false, msg: "Falta M3 Aprovado" };
+            } else if (isMilitar) {
+                if (idxMil < hierarquiaMilitar.indexOf("major")) return { valid: false, msg: "Mínimo exigido: Major" };
+                if (!isM3) return { valid: false, msg: "Falta M3 Aprovado" };
             }
         }
         return { valid: true, msg: "REGULAR" };
@@ -176,6 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!cargo) naoRegistrados++;
             if (d.exists && isModerator(d.motto)) moderadores++;
 
+            // Avalia regra mesmo se o nick não existir no habbo, contando que exista no System
             if (cargo) {
                 let check = checkRules(cargo, cursos, chatType);
                 if (!check.valid) irregulares++;
@@ -187,28 +203,34 @@ document.addEventListener('DOMContentLoaded', () => {
         statIrregulares.textContent = irregulares;
     }
   
+    // ==========================================
+    // RENDERIZAÇÃO DE CARDS
+    // ==========================================
     function createCard(data) {
         const card = document.createElement('div'); card.className = 'target-card';
         const cargoDb = mapCargos[data.nick.toLowerCase()];
         const cursosDb = mapCursos[data.nick.toLowerCase()];
         const chatType = document.querySelector('input[name="chatType"]:checked').value;
 
+        // Se não tiver no habbo, exibe o avatar oculto
         let avatarHtml = data.exists 
             ? `<img src="https://www.habbo.${data.domain}/habbo-imaging/avatarimage?user=${data.nick}&direction=2&head_direction=2&action=std&gesture=std&size=m&headonly=1" alt="avatar">` 
             : `<i class="fa-solid fa-user-slash" style="color:var(--text-muted); font-size: 20px; margin-top: 12px;"></i>`;
         
         if (!data.exists) card.style.borderLeftColor = "var(--status-warn)";
 
-        let statusHabboText = data.exists ? `<span class="val-green">ATIVO</span>` : `<span class="val-red">NÃO CONSTA NO HABBO</span>`;
+        let statusHabboText = data.exists ? `<span class="val-green">ATIVO</span>` : `<span class="val-red"><i class="fa-solid fa-triangle-exclamation"></i> NÃO CONSTA NO HABBO</span>`;
         let mottoText = data.exists ? data.motto : `<span class="val-gray">N/A</span>`;
-        let cargoText = cargoDb ? `<span class="val-green">${cargoDb}</span>` : `<span class="val-red">NÃO REGISTRADO</span>`;
+        let cargoText = cargoDb ? `<span class="val-green">${cargoDb}</span>` : `<span class="val-red">NÃO REGISTRADO (SYSTEM)</span>`;
   
         let rules = checkRules(cargoDb, cursosDb, chatType);
         let ruleText = rules.valid ? `<span class="val-green"><i class="fa-solid fa-check"></i> ${rules.msg}</span>` : `<span class="val-red"><i class="fa-solid fa-xmark"></i> IRREGULAR: ${rules.msg}</span>`;
         if (!rules.valid) card.classList.add("error"); 
 
         let modText = `<span class="val-gray">Membro Comum</span>`;
-        if (data.exists && isModerator(data.motto)) modText = `<span class="val-green"><i class="fa-solid fa-shield-halved"></i> MODERADOR AUTORIZADO</span>`;
+        if (data.exists && isModerator(data.motto)) {
+            modText = `<span class="val-green"><i class="fa-solid fa-shield-halved"></i> MODERADOR AUTORIZADO</span>`;
+        }
   
         let htmlContent = `
           <div class="card-header"><div class="avatar-box">${avatarHtml}</div><div class="header-info"><h3>${data.nick}</h3><p>${data.telegram}</p></div></div>
@@ -275,12 +297,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const lines = rawText.split('\n');
         let usersToScan = [];
   
+        // Leitor de Regex que separa o Nick do Telegram preservando nomes como "-War"
         for (let line of lines) {
             if (line.includes('•')) {
                 let parts = line.split('•');
-                // Mantém nicks que começam com "-", recorta apenas a bolinha do telegram (- Nick)
                 let nickPart = parts[0].trim(); 
-                if (nickPart.startsWith('- ')) nickPart = nickPart.substring(2).trim();
+                // Se a linha começa com um traço e espaço ("- "), removemos apenas eles
+                if (nickPart.startsWith('- ')) {
+                    nickPart = nickPart.substring(2).trim();
+                }
                 let tgPart = parts[1].trim();
                 usersToScan.push({ nick: nickPart, telegram: tgPart });
             } else if (line.trim().length > 0 && !line.includes(':') && !line.startsWith('Olá') && !line.startsWith('=')) {
@@ -288,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        if (usersToScan.length === 0) { alert("Nenhum alvo válido encontrado. Verifique o formato."); return; }
+        if (usersToScan.length === 0) { alert("Nenhum alvo válido encontrado. Verifique o formato (- Nick • @telegram)."); return; }
     
         resultsGrid.innerHTML = ""; scannedUsersData = []; failedNicks = []; updateFailuresUI(); resultCount.textContent = "0"; analyticsPanel.style.display = "none";
         btnSearch.disabled = true; failuresBody.style.display = 'none'; toggleIcon.classList.replace('fa-chevron-up', 'fa-chevron-down'); retryStatus.textContent = "";
@@ -296,7 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scanStatus.textContent = "Sincronizando Dados (Firebase)..."; 
         await fetchDatabase(); 
         
-        const CHUNK_SIZE = 5; 
+        const CHUNK_SIZE = 15; 
         const totalChunks = Math.ceil(usersToScan.length / CHUNK_SIZE); 
     
         for (let i = 0; i < usersToScan.length; i += CHUNK_SIZE) {
@@ -308,14 +333,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = await fetchUserData(user.nick, user.telegram, domain); 
                     scannedUsersData.push(data); 
                     const cargoDb = mapCargos[data.nick.toLowerCase()];
+                    
                     if (data.exists || cargoDb) {
                         createCard(data); resultCount.textContent = parseInt(resultCount.textContent) + 1; 
                     } else failedNicks.push(user);
                 } catch(e) { failedNicks.push(user); }
             }));
             
-            // Pausa sutil entre lotes para não ser bloqueado pelos Proxies (Sem tela descendo)
-            await new Promise(r => setTimeout(r, 400)); 
+            // Pausa minúscula apenas para não sobrecarregar as promises no navegador
+            await new Promise(r => setTimeout(r, 300)); 
         }
     
         scanStatus.textContent = "Conferência concluída com sucesso."; 
