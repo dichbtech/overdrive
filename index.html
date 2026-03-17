@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>INTEL // Rastreador de Alvos</title>
+  <title>INTEL // Conferência de Chats</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -11,24 +11,23 @@
 <body>
 
   <div class="terminal-container">
-    
     <header class="terminal-header">
       <div class="title-wrapper">
-        <i class="fa-solid fa-crosshairs radar-icon"></i>
+        <i class="fa-solid fa-clipboard-check radar-icon"></i>
         <div>
-          <h1>[ INTEL_TRACKER v5.0 ]</h1>
-          <p>MÓDULO DE EXTRAÇÃO RÁPIDA DE DADOS TÁTICOS E ANÁLISE BIOMÉTRICA</p>
+          <h1>[ INTEL_CONFERENCE v1.0 ]</h1>
+          <p>SISTEMA DE VERIFICAÇÃO DE CHATS E HIERARQUIA (FIREBASE + HABBO API)</p>
         </div>
       </div>
     </header>
 
     <section class="control-panel">
       <div class="panel-header">
-        <h2><i class="fa-solid fa-list"></i> LISTA DE ALVOS (NICKS)</h2>
+        <h2><i class="fa-solid fa-list"></i> LISTA DE MEMBROS (TELEGRAM)</h2>
       </div>
       <div class="panel-body">
-        <p class="instruction">Insira um nick por linha (Máximo recomendado: 150). O sistema usará varredura em lotes paralelos.</p>
-        <textarea id="nickList" rows="6" placeholder="Alvo1&#10;Alvo2&#10;Alvo3..."></textarea>
+        <p class="instruction">Cole a lista do Telegram no formato "- Nick • @usuario".</p>
+        <textarea id="nickList" rows="6" placeholder="- .Chaves • @brendo164&#10;- -War • @fonsecafns&#10;- PatrickM11 • @pkzinh9"></textarea>
         
         <div class="action-row">
           <select id="hotelSelect" class="tech-select">
@@ -36,38 +35,46 @@
             <option value="com">Servidor: US (.com)</option>
             <option value="es">Servidor: ES (.es)</option>
           </select>
-          <button id="btnSearch" class="btn-scan"><i class="fa-solid fa-satellite-dish"></i> INICIAR VARREDURA</button>
+          <button id="btnSearch" class="btn-scan"><i class="fa-solid fa-satellite-dish"></i> INICIAR CONFERÊNCIA</button>
         </div>
       </div>
     </section>
 
     <section class="filter-section">
       <div class="panel-header">
-        <h2><i class="fa-solid fa-filter"></i> FILTROS DE EXIBIÇÃO</h2>
+        <h2><i class="fa-solid fa-gear"></i> CONFIGURAÇÃO DA CONFERÊNCIA (MODERAÇÃO)</h2>
       </div>
-      <div class="filter-body">
-        <label class="tech-checkbox"><input type="checkbox" id="chkAllGroups"><span>Mostrar TODOS os grupos</span></label>
-        <label class="tech-checkbox"><input type="checkbox" id="chkOtherPolice"><span>Apenas "Outras Polícias"</span></label>
-        <label class="tech-checkbox"><input type="checkbox" id="chkOffline"><span>Apenas Modo Offline</span></label>
-        <label class="tech-checkbox"><input type="checkbox" id="chkHidden"><span>Apenas Visibilidade Oculta</span></label>
-        
-        <div class="filter-actions">
-          <button id="btnApplyFilters" class="btn-scan"><i class="fa-solid fa-check"></i> SALVAR</button>
-          <button id="btnClearFilters" class="btn-scan btn-clear"><i class="fa-solid fa-xmark"></i> REMOVER FILTROS</button>
-        </div>
+      <div class="filter-body" style="flex-direction: column; align-items: flex-start;">
+        <label class="tech-checkbox">
+          <input type="radio" name="chatType" value="oficiais" checked>
+          <span>[DIC] Oficiais e Oficiais Superiores (C.Ap, S.Ap, CC.Ap, S.Sp, VL.Sp, L.Sp)</span>
+        </label>
+        <label class="tech-checkbox" style="margin-top: 10px;">
+          <input type="radio" name="chatType" value="pv">
+          <span>Chats PV e Acompanhamento (CC.Ap, S.Ap, C.Ap)</span>
+        </label>
       </div>
     </section>
 
     <section class="results-section">
       <div class="panel-header main-result-header">
-        <h2><i class="fa-solid fa-database"></i> RELATÓRIOS DOS ALVOS (<span id="resultCount">0</span>)</h2>
+        <h2><i class="fa-solid fa-database"></i> RESULTADO DA CONFERÊNCIA (<span id="resultCount">0</span>)</h2>
         <span id="scanStatus" class="scan-status">Aguardando comando...</span>
       </div>
 
       <div id="analyticsPanel" class="analytics-hud" style="display: none;">
-        <div class="stat-box"><div class="stat-value" id="statOnline">0</div><div class="stat-label">OPERACIONAIS (ONLINE)</div></div>
-        <div class="stat-box warning-box"><div class="stat-value" id="statRisco">0</div><div class="stat-label">TRANSGRESSÕES</div></div>
-        <div class="stat-box error-box"><div class="stat-value" id="statBaixas">0</div><div class="stat-label">BAIXAS (ERROS/BAN)</div></div>
+        <div class="stat-box">
+          <div class="stat-value" id="statMembros">0</div>
+          <div class="stat-label">MEMBROS NA LISTA</div>
+        </div>
+        <div class="stat-box warning-box">
+          <div class="stat-value" id="statNaoRegistrados">0</div>
+          <div class="stat-label">NÃO REGISTRADOS (SYSTEM)</div>
+        </div>
+        <div class="stat-box" style="border-color: var(--status-ok);">
+          <div class="stat-value" id="statModeradores" style="color: var(--status-ok);">0</div>
+          <div class="stat-label">MODERADORES PRESENTES</div>
+        </div>
       </div>
       
       <div class="results-layout">
@@ -77,23 +84,16 @@
             <i class="fa-solid fa-chevron-down" id="toggleIcon"></i>
           </div>
           <div class="failures-body" id="failuresBody" style="display: none;">
-             <p class="fail-instruction">Clique na seta para re-processar os alvos perdidos automaticamente.</p>
+             <p class="fail-instruction">Tentando re-processar alvos perdidos automaticamente.</p>
              <ul id="failuresList"></ul>
              <div id="retryStatus" class="retry-status"></div>
           </div>
         </aside>
 
         <div id="resultsGrid" class="results-grid"></div>
-
       </div>
     </section>
-  </div>
 
-  <div id="aiOverlay" class="ai-overlay">
-    <div class="hologram-wrapper">
-      <iframe id="hologramVideo" src="https://www.youtube.com/embed/7kGwEs2rgNY?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&loop=1&playlist=7kGwEs2rgNY&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-      <div class="scanlines"></div>
-    </div>
   </div>
 
   <script src="script.js"></script>

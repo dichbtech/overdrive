@@ -13,196 +13,272 @@ document.addEventListener('DOMContentLoaded', () => {
     const failCountUI = document.getElementById('failCount');
     const retryStatus = document.getElementById('retryStatus');
   
-    const chkAllGroups = document.getElementById('chkAllGroups');
-    const chkOtherPolice = document.getElementById('chkOtherPolice'); 
-    const chkOffline = document.getElementById('chkOffline');
-    const chkHidden = document.getElementById('chkHidden');
-    const btnApplyFilters = document.getElementById('btnApplyFilters');
-    const btnClearFilters = document.getElementById('btnClearFilters');
-    
     const analyticsPanel = document.getElementById('analyticsPanel');
-    const statOnline = document.getElementById('statOnline');
-    const statRisco = document.getElementById('statRisco');
-    const statBaixas = document.getElementById('statBaixas');
-  
-    // Controle da IA
-    const aiOverlay = document.getElementById('aiOverlay');
-    let hasWelcomed = false;
-    let iaIsSpeaking = false;
-    let isOverlayActive = false;
+    const statMembros = document.getElementById('statMembros');
+    const statNaoRegistrados = document.getElementById('statNaoRegistrados');
+    const statModeradores = document.getElementById('statModeradores');
   
     let failedNicks = [];
     let scannedUsersData = [];
     let isRetrying = false;
-  
+    let mapCargos = {}; // Armazena os dados do Firebase
+
     // ==========================================
-    // SISTEMA DE VOZ DA IA (FORTE E FEMININA)
+    // SINCRONIZAÇÃO COM FIREBASE (CARGOS) OVERDRIVE
     // ==========================================
-    let synthVoices = [];
-    function populateVoices() { synthVoices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('pt')); }
-    if (window.speechSynthesis.onvoiceschanged !== undefined) window.speechSynthesis.onvoiceschanged = populateVoices;
-    populateVoices();
-  
-    function speakText(text, onStartCallback, onEndCallback) {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel(); 
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'pt-BR';
-            utterance.pitch = 1.5; // Feminina robótica
-            utterance.rate = 1.25; // Implacável
-  
-            if (synthVoices.length === 0) populateVoices();
-            const femaleVoice = synthVoices.find(v => v.name.includes('Francisca') || v.name.includes('Luciana') || v.name.includes('Google português do Brasil') || v.name.includes('Zira') || v.name.includes('Vitoria') || v.name.includes('Helena'));
-            if (femaleVoice) { utterance.voice = femaleVoice; } 
-            else if (synthVoices.length > 0) { utterance.voice = synthVoices.find(v => !v.name.includes('Daniel') && !v.name.includes('Thiago')) || synthVoices[0]; }
-  
-            utterance.onstart = () => { iaIsSpeaking = true; if(onStartCallback) onStartCallback(); };
-            utterance.onend = () => { iaIsSpeaking = false; if(onEndCallback) onEndCallback(); };
-            window.speechSynthesis.speak(utterance);
-        } else {
-            if (onStartCallback) onStartCallback();
-            setTimeout(() => { if (onEndCallback) onEndCallback(); }, 3000);
+    async function fetchCargosFirebase() {
+        const apiKey = "AIzaSyBcA6jZ4Uxul6e1JkDvW02MW4TqbQONWxk";
+        const projectId = "overdrive-7f853";
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/configuracoes/cargos?key=${apiKey}`;
+
+        try {
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.fields && json.fields.dados && json.fields.dados.stringValue) {
+                const rawData = JSON.parse(json.fields.dados.stringValue);
+                mapCargos = {};
+                for (let key in rawData) {
+                    mapCargos[key.trim().toLowerCase()] = rawData[key].trim();
+                }
+            }
+        } catch (e) {
+            console.error("Falha ao baixar cargos do Firebase:", e);
         }
     }
-  
-    document.body.addEventListener('click', () => {
-        if (!hasWelcomed) { 
-            speakText("Bem-vindo, policial, ao sistema intel tracker.", null, null); 
-            hasWelcomed = true; 
-        }
-    }, { once: true });
-  
+
     // ==========================================
-    // LÓGICA DE BUSCA HABBO E RENDERIZAÇÃO
+    // LÓGICA DE API E BUSCA HABBO
     // ==========================================
-    const POLICE_REGEX = /\b(RCC|GOPH|ONU|DIC|DSP|PMHH|Ex\.Br|DPH|CSI|MB|FAB|EH|PMH|DPG|PH|PMR|DPP|CAP|GOC|UNP|FMB|POL[ÍI]CIA|MILITAR|EX[ÉI]RCITO|DEPARTAMENTO|FOR[ÇC]AS|BOPE|SWAT|FBI)\b|ÐIC/i;
-    const DIC_REGEX = /(DIC|ÐIC|Departamento de Investiga[çc][ãa]o Criminal)/i;
-    function isPoliceGroup(groupName) { return POLICE_REGEX.test(groupName); }
-    function isDICGroup(groupName) { return DIC_REGEX.test(groupName); }
-  
-    const PROXIES = [
-      (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-      (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+    const PROXIES = [ 
+        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`, 
+        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, 
+        (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` 
     ];
-  
-    async function fetchWithProxy(targetUrl) {
-      for (const getProxyUrl of PROXIES) {
-        try { const res = await fetch(getProxyUrl(targetUrl)); const text = await res.text();
-          try { const data = JSON.parse(text); if (data && (data.uniqueId || data.error === "not-found" || data.user || Array.isArray(data.groups))) return data; } catch(e) {}
-        } catch (e) {}
-      } throw new Error("Proxy falhou");
+    
+    async function fetchWithProxy(targetUrl) { 
+        for (const getProxyUrl of PROXIES) { 
+            try { 
+                const res = await fetch(getProxyUrl(targetUrl)); 
+                const text = await res.text(); 
+                try { 
+                    const data = JSON.parse(text); 
+                    if (data && (data.uniqueId || data.error === "not-found" || data.user)) return data; 
+                } catch(e) {} 
+            } catch (e) {} 
+        } 
+        throw new Error("Proxy falhou"); 
+    }
+    
+    async function fetchUserData(nick, telegram, domain) {
+        const targetUrl = `https://www.habbo.${domain}/api/public/users?name=${encodeURIComponent(nick)}`;
+        const baseData = await fetchWithProxy(targetUrl);
+        
+        if (baseData.error === "not-found" || (baseData.name && baseData.name.toLowerCase() !== nick.toLowerCase())) {
+            return { exists: false, nick: nick, telegram: telegram };
+        }
+        
+        return { 
+            exists: true, 
+            nick: baseData.name || nick, 
+            telegram: telegram,
+            motto: baseData.motto || "Sem missão", 
+            domain: domain 
+        };
     }
   
-    function formatDate(isoString) { if (!isoString) return "Desconhecido"; const date = new Date(isoString); return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  
-    async function fetchUserData(nick, domain) {
-      const targetUrl = `https://www.habbo.${domain}/api/public/users?name=${encodeURIComponent(nick)}`;
-      const baseData = await fetchWithProxy(targetUrl);
-      if (baseData.error === "not-found" || (baseData.name && baseData.name.toLowerCase() !== nick.toLowerCase())) return { exists: false, nick: nick };
-      const uniqueId = baseData.uniqueId; let profileVisible = baseData.profileVisible; if (baseData.lastAccessTime) profileVisible = true;
-      let allGroups = []; let policeGroups = []; let otherPoliceGroups = []; 
-      if (profileVisible && uniqueId) {
-          try { const profData = await fetchWithProxy(`https://www.habbo.${domain}/api/public/users/${uniqueId}/profile`);
-              if (profData.groups && Array.isArray(profData.groups)) { allGroups = profData.groups; policeGroups = profData.groups.filter(g => isPoliceGroup(g.name)); otherPoliceGroups = policeGroups.filter(g => !isDICGroup(g.name)); }
-          } catch(e) {}
-      }
-      return { exists: true, nick: baseData.name || nick, motto: baseData.motto || "Sem missão", profileVisible: profileVisible, isOnline: baseData.online, lastAccessTime: baseData.lastAccessTime, allGroups: allGroups, policeGroups: policeGroups, otherPoliceGroups: otherPoliceGroups, domain: domain };
+    // ==========================================
+    // VERIFICAÇÃO DE MODERAÇÃO
+    // ==========================================
+    function isModerator(motto) {
+        const chatType = document.querySelector('input[name="chatType"]:checked').value;
+        const upperMotto = motto.toUpperCase();
+        let acronyms = [];
+
+        if (chatType === 'oficiais') {
+            acronyms = ['C.AP', 'S.AP', 'CC.AP', 'S.SP', 'VL.SP', 'L.SP'];
+        } else {
+            acronyms = ['CC.AP', 'S.AP', 'C.AP'];
+        }
+
+        return acronyms.some(acronym => upperMotto.includes(acronym));
     }
-  
-    function shouldRenderUser(data) {
-       if (!data.exists) return !chkOffline.checked && !chkHidden.checked && !chkOtherPolice.checked;
-       const isOfflineMode = !data.isOnline && !data.lastAccessTime;
-       if (chkOffline.checked && !isOfflineMode) return false;
-       if (chkHidden.checked && data.profileVisible) return false;
-       if (chkOtherPolice.checked && data.otherPoliceGroups.length === 0) return false;
-       return true;
-    }
-  
+
     function updateAnalyticsHUD() {
-      let online = 0; let riscos = 0; let baixas = failedNicks.length;
-      scannedUsersData.forEach(d => {
-          if(!d.exists) { baixas++; return; }
-          if(d.isOnline) online++; let hasRisk = false;
-          if (!d.profileVisible || (d.profileVisible && !d.isOnline && !d.lastAccessTime) || d.otherPoliceGroups.length > 0) hasRisk = true;
-          if (d.profileVisible && d.policeGroups.filter(g => isDICGroup(g.name)).length === 0) hasRisk = true;
-          if (d.lastAccessTime && Math.floor((new Date() - new Date(d.lastAccessTime)) / (1000 * 60 * 60 * 24)) >= 7) hasRisk = true;
-          if(hasRisk) riscos++;
-      });
-      statOnline.textContent = online; statRisco.textContent = riscos; statBaixas.textContent = baixas; return riscos; 
-    }
-  
-    function renderAllCards() {
-       resultsGrid.innerHTML = ""; let count = 0;
-       scannedUsersData.forEach(data => { if (shouldRenderUser(data)) { if (data.exists) createSuccessCard(data); else createErrorCard(data.nick, data.realFailure); count++; } });
-       resultCount.textContent = count;
+        let total = scannedUsersData.length; 
+        let naoRegistrados = 0; 
+        let moderadores = 0;
+
+        scannedUsersData.forEach(d => {
+            if (d.exists) {
+                const cargo = mapCargos[d.nick.toLowerCase()];
+                if (!cargo) naoRegistrados++;
+                if (isModerator(d.motto)) moderadores++;
+            }
+        });
+        
+        statMembros.textContent = total; 
+        statNaoRegistrados.textContent = naoRegistrados; 
+        statModeradores.textContent = moderadores; 
     }
   
     function createSuccessCard(data) {
-      const card = document.createElement('div'); card.className = 'target-card';
-      const visibText = data.profileVisible ? '<span class="val-green">ATIVADA (ABERTO)</span>' : '<span class="val-red">DESATIVADA (OCULTO)</span>';
-      let onlineText = data.isOnline ? '<span class="val-green">🟢 ONLINE</span>' : (!data.lastAccessTime ? '<span class="val-gray">Modo Offline (Oculto)</span>' : `<span class="val-gray">Último acesso: ${formatDate(data.lastAccessTime)}</span>`);
-      let groupsToUse = chkAllGroups.checked ? data.allGroups : (chkOtherPolice.checked ? data.otherPoliceGroups : data.policeGroups);
-      let groupTitle = chkAllGroups.checked ? "TODOS OS GRUPOS" : (chkOtherPolice.checked ? "OUTRAS POLÍCIAS" : "ORG. POLICIAIS");
-      let htmlContent = `<div class="card-header"><div class="avatar-box"><img src="https://www.habbo.${data.domain}/habbo-imaging/avatarimage?user=${data.nick}&direction=2&head_direction=2&action=std&gesture=std&size=m&headonly=1" alt="avatar"></div><div class="header-info"><h3>${data.nick}</h3><p>MISSÃO: ${data.motto}</p></div></div><div class="card-body"><div class="data-row"><div class="data-label">PERFIL:</div><div class="data-value">${visibText}</div></div><div class="data-row"><div class="data-label">STATUS:</div><div class="data-value">${onlineText}</div></div><div class="groups-container"><div class="groups-title">${groupTitle} (${groupsToUse.length})</div>`;
-      if (!data.profileVisible) htmlContent += `<div class="group-item"><span class="group-name val-red">Acesso negado: Perfil Privado.</span></div>`; else if (groupsToUse.length === 0) htmlContent += `<div class="group-item"><span class="group-name val-gray">Nenhum grupo encontrado nesta categoria.</span></div>`; else groupsToUse.forEach(g => { htmlContent += `<div class="group-item"><img src="https://www.habbo.${data.domain}/habbo-imaging/badge/${g.badgeCode}.gif" onerror="this.style.display='none'"><div class="group-details"><span class="group-name">${g.name}</span></div></div>`; });
-      htmlContent += `</div></div>`; card.innerHTML = htmlContent; resultsGrid.appendChild(card);
+        const card = document.createElement('div'); 
+        card.className = 'target-card';
+        
+        // Puxa o cargo do Firebase
+        const cargoDb = mapCargos[data.nick.toLowerCase()];
+        let cargoText = cargoDb ? `<span class="val-green">${cargoDb}</span>` : `<span class="val-red">NÃO REGISTRADO (SYSTEM)</span>`;
+  
+        // Verifica Moderação
+        const isMod = isModerator(data.motto);
+        let modText = isMod 
+            ? `<span class="val-green"><i class="fa-solid fa-shield-halved"></i> MODERADOR AUTORIZADO</span>` 
+            : `<span class="val-gray">Membro Comum</span>`;
+
+        let htmlContent = `
+          <div class="card-header">
+            <div class="avatar-box"><img src="https://www.habbo.${data.domain}/habbo-imaging/avatarimage?user=${data.nick}&direction=2&head_direction=2&action=std&gesture=std&size=m&headonly=1" alt="avatar"></div>
+            <div class="header-info">
+                <h3>${data.nick}</h3>
+                <p>${data.telegram}</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="data-row"><div class="data-label">CARGO/POSTO:</div><div class="data-value">${cargoText}</div></div>
+            <div class="data-row"><div class="data-label">MISSÃO:</div><div class="data-value">${data.motto}</div></div>
+            <div class="data-row"><div class="data-label">PERMISSÃO:</div><div class="data-value">${modText}</div></div>
+          </div>
+        `;
+        
+        card.innerHTML = htmlContent; 
+        resultsGrid.appendChild(card); 
     }
   
-    function createErrorCard(nick, isConnectionFail = false) {
-      const card = document.createElement('div'); card.className = 'target-card error';
-      card.innerHTML = `<div class="card-header"><div class="avatar-box"><i class="fa-solid fa-xmark" style="color:#ff4444; margin-top:15px;"></i></div><div class="header-info"><h3>${nick}</h3><p class="val-red">${isConnectionFail ? "FALHA DE CONEXÃO" : "USUÁRIO INEXISTENTE"}</p></div></div>`;
-      resultsGrid.appendChild(card);
+    function createErrorCard(nick, telegram) {
+        const card = document.createElement('div'); card.className = 'target-card error';
+        card.innerHTML = `
+        <div class="card-header">
+            <div class="avatar-box"><i class="fa-solid fa-xmark" style="color:#ff003c; margin-top:15px;"></i></div>
+            <div class="header-info"><h3>${nick}</h3><p>${telegram}</p></div>
+        </div>
+        <div class="card-body">
+            <div class="data-row"><div class="data-label">STATUS:</div><div class="data-value"><span class="val-red">USUÁRIO INEXISTENTE NO HABBO</span></div></div>
+        </div>`;
+        resultsGrid.appendChild(card); 
     }
   
-    function updateFailuresUI() { failCountUI.textContent = failedNicks.length; failuresListUI.innerHTML = ""; failedNicks.forEach(nick => { const li = document.createElement('li'); li.innerHTML = `<span>${nick}</span> <span><i class="fa-solid fa-triangle-exclamation"></i></span>`; failuresListUI.appendChild(li); }); }
-    function addFailedNick(nick) { if(!failedNicks.includes(nick)) { failedNicks.push(nick); updateFailuresUI(); } }
-    function removeFailedNick(nick) { failedNicks = failedNicks.filter(n => n !== nick); updateFailuresUI(); }
+    function updateFailuresUI() {
+        failCountUI.textContent = failedNicks.length; failuresListUI.innerHTML = "";
+        failedNicks.forEach(f => {
+           const li = document.createElement('li');
+           li.innerHTML = `<span>${f.nick}</span> <span><i class="fa-solid fa-triangle-exclamation"></i></span>`;
+           failuresListUI.appendChild(li);
+        });
+    }
   
-    btnApplyFilters.addEventListener('click', () => { renderAllCards(); });
-    btnClearFilters.addEventListener('click', () => { chkAllGroups.checked = false; chkOtherPolice.checked = false; chkOffline.checked = false; chkHidden.checked = false; renderAllCards(); });
+    failuresToggle.addEventListener('click', () => {
+       if (failuresBody.style.display === 'none') {
+           failuresBody.style.display = 'block';
+           toggleIcon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+           if (failedNicks.length > 0 && !isRetrying) { startRetryProcess(); }
+       } else {
+           failuresBody.style.display = 'none';
+           toggleIcon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+       }
+    });
+  
+    async function startRetryProcess() {
+        isRetrying = true; let count = 3;
+        const countdown = setInterval(async () => {
+            retryStatus.textContent = `Forçando comunicação em ${count}s...`; count--;
+            if (count < 0) {
+                clearInterval(countdown);
+                retryStatus.textContent = "Re-processando alvos perdidos...";
+                
+                const nicksToRetry = [...failedNicks]; const domain = hotelSelect.value;
+                failedNicks = []; 
+                
+                const CHUNK_SIZE = 5; 
+                for (let i = 0; i < nicksToRetry.length; i += CHUNK_SIZE) {
+                    const chunk = nicksToRetry.slice(i, i + CHUNK_SIZE);
+                    
+                    await Promise.all(chunk.map(async (user) => {
+                        try {
+                            const data = await fetchUserData(user.nick, user.telegram, domain);
+                            scannedUsersData.push(data); 
+                            if (data.exists) createSuccessCard(data); else createErrorCard(data.nick, data.telegram);
+                            resultCount.textContent = parseInt(resultCount.textContent) + 1;
+                        } catch(e) {
+                            failedNicks.push(user);
+                        }
+                    }));
+                    await new Promise(r => setTimeout(r, 500));
+                }
+                
+                updateFailuresUI();
+                retryStatus.textContent = "Processamento finalizado.";
+                isRetrying = false;
+                updateAnalyticsHUD();
+            }
+        }, 1000);
+    }
   
     btnSearch.addEventListener('click', async () => {
-      const rawText = nickListInput.value; const domain = hotelSelect.value;
-      const nicks = [...new Set(rawText.split('\n').map(n => n.trim()).filter(n => n.length > 0))];
-      if (nicks.length === 0) { alert("Insira pelo menos um nick."); return; }
-  
-      resultsGrid.innerHTML = ""; scannedUsersData = []; failedNicks = []; updateFailuresUI(); resultCount.textContent = "0"; analyticsPanel.style.display = "none";
-      btnSearch.disabled = true; failuresBody.style.display = 'none'; toggleIcon.classList.replace('fa-chevron-up', 'fa-chevron-down'); retryStatus.textContent = "";
-      
-      const CHUNK_SIZE = 10; const totalChunks = Math.ceil(nicks.length / CHUNK_SIZE);
-      for (let i = 0; i < nicks.length; i += CHUNK_SIZE) {
-          const chunk = nicks.slice(i, i + CHUNK_SIZE); scanStatus.textContent = `Varredura rápida: Lote ${Math.floor(i / CHUNK_SIZE) + 1} de ${totalChunks}...`;
-          await Promise.all(chunk.map(async (nick) => {
-              try { const data = await fetchUserData(nick, domain); scannedUsersData.push(data); if (shouldRenderUser(data)) { if (data.exists) createSuccessCard(data); else createErrorCard(data.nick); resultCount.textContent = parseInt(resultCount.textContent) + 1; } } catch(e) { addFailedNick(nick); }
-          }));
-          await new Promise(r => setTimeout(r, 250));
-      }
-  
-      scanStatus.textContent = "Varredura principal concluída."; 
-      const totalRiscos = updateAnalyticsHUD(); analyticsPanel.style.display = "flex"; btnSearch.disabled = false;
-  
-      // ===============================================
-      // A MÁGICA: O VÍDEO DA IA APARECE NA TELA
-      // ===============================================
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      
-      if (aiOverlay) {
-          setTimeout(() => {
-              aiOverlay.classList.add('active'); // O fundo fica preto
-              isOverlayActive = true;
-              
-              setTimeout(() => {
-                  let msg = totalRiscos > 0 ? `Atenção. Varredura finalizada. Uma ameaça foi identificada. Foram encontradas ${totalRiscos} transgressões no sistema.` : "Varredura finalizada. Nenhuma transgressão foi encontrada no sistema.";
-                  
-                  speakText(msg, null, () => { 
-                      setTimeout(() => { 
-                          aiOverlay.classList.remove('active'); // SOME QUANDO PARA DE FALAR
-                          isOverlayActive = false;
-                      }, 1000); 
-                  });
-              }, 1000); // 1 segundo pra admirar o rosto surgindo
-          }, 800); 
-      }
+        const rawText = nickListInput.value; 
+        const domain = hotelSelect.value;
+        const lines = rawText.split('\n');
+        let usersToScan = [];
+
+        // Separador Regex para o Telegram (- Nick • @telegram)
+        for (let line of lines) {
+            if (line.includes('•')) {
+                let parts = line.split('•');
+                let nickPart = parts[0].replace(/^[- \t]+/, '').trim(); 
+                let tgPart = parts[1].trim();
+                usersToScan.push({ nick: nickPart, telegram: tgPart });
+            } else if (line.trim().length > 0 && !line.includes(':') && !line.startsWith('Olá') && !line.startsWith('=')) {
+                usersToScan.push({ nick: line.trim(), telegram: 'N/A' });
+            }
+        }
+        
+        if (usersToScan.length === 0) { alert("Nenhum alvo válido encontrado. Verifique o formato (- Nick • @telegram)."); return; }
+    
+        resultsGrid.innerHTML = ""; scannedUsersData = []; failedNicks = []; updateFailuresUI(); resultCount.textContent = "0"; analyticsPanel.style.display = "none";
+        btnSearch.disabled = true; failuresBody.style.display = 'none'; toggleIcon.classList.replace('fa-chevron-up', 'fa-chevron-down'); retryStatus.textContent = "";
+        
+        scanStatus.textContent = "Sincronizando Cargos (Firebase)..."; 
+        await fetchCargosFirebase(); 
+        
+        const CHUNK_SIZE = 5; 
+        const totalChunks = Math.ceil(usersToScan.length / CHUNK_SIZE); 
+    
+        for (let i = 0; i < usersToScan.length; i += CHUNK_SIZE) {
+            const chunk = usersToScan.slice(i, i + CHUNK_SIZE); 
+            scanStatus.textContent = `Conferindo Lista: Lote ${Math.floor(i / CHUNK_SIZE) + 1} de ${totalChunks}...`; 
+            
+            await Promise.all(chunk.map(async (user) => {
+                try { 
+                    const data = await fetchUserData(user.nick, user.telegram, domain); 
+                    scannedUsersData.push(data); 
+                    
+                    if (data.exists) createSuccessCard(data); 
+                    else createErrorCard(data.nick, data.telegram); 
+                    
+                    resultCount.textContent = parseInt(resultCount.textContent) + 1; 
+                } catch(e) { failedNicks.push(user); }
+            }));
+    
+            const cards = resultsGrid.querySelectorAll('.target-card'); 
+            if (cards.length > 0) cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' });
+            
+            await new Promise(r => setTimeout(r, 600)); 
+        }
+    
+        scanStatus.textContent = "Conferência concluída com sucesso."; 
+        updateAnalyticsHUD(); 
+        updateFailuresUI();
+        analyticsPanel.style.display = "flex"; 
+        btnSearch.disabled = false;
+        window.scrollTo({ top: 0, behavior: 'smooth' }); 
     });
 });
