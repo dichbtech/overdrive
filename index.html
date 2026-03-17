@@ -11,12 +11,13 @@
 <body>
 
   <div class="terminal-container">
+    
     <header class="terminal-header">
       <div class="title-wrapper">
         <i class="fa-solid fa-clipboard-check radar-icon"></i>
         <div>
-          <h1>[ INTEL_CONFERENCE v1.0 ]</h1>
-          <p>SISTEMA DE VERIFICAÇÃO DE CHATS E HIERARQUIA (FIREBASE + HABBO API)</p>
+          <h1>[ INTEL_CONFERENCE v2.0 ]</h1>
+          <p>SISTEMA DE VERIFICAÇÃO DE CHATS (FIREBASE OVERDRIVE + HABBO API)</p>
         </div>
       </div>
     </header>
@@ -27,7 +28,7 @@
       </div>
       <div class="panel-body">
         <p class="instruction">Cole a lista do Telegram no formato "- Nick • @usuario".</p>
-        <textarea id="nickList" rows="6" placeholder="- .Chaves • @brendo164&#10;- -War • @fonsecafns&#10;- PatrickM11 • @pkzinh9"></textarea>
+        <textarea id="nickList" rows="8" placeholder="- .Chaves • @brendo164&#10;- -War • @fonsecafns&#10;- PatrickM11 • @pkzinh9"></textarea>
         
         <div class="action-row">
           <select id="hotelSelect" class="tech-select">
@@ -35,7 +36,7 @@
             <option value="com">Servidor: US (.com)</option>
             <option value="es">Servidor: ES (.es)</option>
           </select>
-          <button id="btnSearch" class="btn-scan"><i class="fa-solid fa-satellite-dish"></i> INICIAR CONFERÊNCIA</button>
+          <button id="btnSearch" class="btn-scan"><i class="fa-solid fa-bolt"></i> INICIAR CONFERÊNCIA RÁPIDA</button>
         </div>
       </div>
     </section>
@@ -69,28 +70,30 @@
         </div>
         <div class="stat-box warning-box">
           <div class="stat-value" id="statNaoRegistrados">0</div>
-          <div class="stat-label">NÃO REGISTRADOS (SYSTEM)</div>
+          <div class="stat-label">NÃO REGISTRADOS</div>
         </div>
         <div class="stat-box" style="border-color: var(--status-ok);">
           <div class="stat-value" id="statModeradores" style="color: var(--status-ok);">0</div>
-          <div class="stat-label">MODERADORES PRESENTES</div>
+          <div class="stat-label">MODERADORES ENCONTRADOS</div>
         </div>
       </div>
       
       <div class="results-layout">
+        
         <aside class="failures-sidebar">
           <div class="failures-header" id="failuresToggle">
             <span>FALHAS NA BUSCA (<span id="failCount">0</span>)</span>
             <i class="fa-solid fa-chevron-down" id="toggleIcon"></i>
           </div>
           <div class="failures-body" id="failuresBody" style="display: none;">
-             <p class="fail-instruction">Tentando re-processar alvos perdidos automaticamente.</p>
+             <p class="fail-instruction">Clique na seta para tentar novamente conexões perdidas.</p>
              <ul id="failuresList"></ul>
              <div id="retryStatus" class="retry-status"></div>
           </div>
         </aside>
 
         <div id="resultsGrid" class="results-grid"></div>
+
       </div>
     </section>
 

@@ -21,8 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let failedNicks = [];
     let scannedUsersData = [];
     let isRetrying = false;
-    let mapCargos = {}; // Armazena os dados do Firebase
-
+    let mapCargos = {}; 
+  
     // ==========================================
     // SINCRONIZAÇÃO COM FIREBASE (CARGOS) OVERDRIVE
     // ==========================================
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const apiKey = "AIzaSyBcA6jZ4Uxul6e1JkDvW02MW4TqbQONWxk";
         const projectId = "overdrive-7f853";
         const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/configuracoes/cargos?key=${apiKey}`;
-
+  
         try {
             const res = await fetch(url);
             const json = await res.json();
@@ -45,24 +45,38 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Falha ao baixar cargos do Firebase:", e);
         }
     }
-
+  
     // ==========================================
-    // LÓGICA DE API E BUSCA HABBO
+    // LÓGICA DE API E BUSCA HABBO (NOVA CONFIGURAÇÃO DE PROXY ANTI-403)
     // ==========================================
+    
+    // Agora usando o endpoint GET da allorigins, que embute a resposta em um JSON nativo, evitando bloqueios CORS pesados.
     const PROXIES = [ 
-        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`, 
-        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, 
-        (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` 
+        { url: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, type: 'raw' },
+        { url: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, type: 'json' }
     ];
     
     async function fetchWithProxy(targetUrl) { 
-        for (const getProxyUrl of PROXIES) { 
+        for (const proxy of PROXIES) { 
             try { 
-                const res = await fetch(getProxyUrl(targetUrl)); 
-                const text = await res.text(); 
+                const res = await fetch(proxy.url(targetUrl)); 
+                if (!res.ok) continue; // Pula se deu erro 403, 404 de rede, etc
+
+                let text;
+                if (proxy.type === 'json') {
+                    const jsonRes = await res.json();
+                    text = jsonRes.contents; // Extrai o conteúdo real envelopado pelo allorigins
+                } else {
+                    text = await res.text();
+                }
+
+                if (!text) continue;
+
                 try { 
                     const data = JSON.parse(text); 
-                    if (data && (data.uniqueId || data.error === "not-found" || data.user)) return data; 
+                    if (data && (data.uniqueId || data.error === "not-found" || data.user)) {
+                        return data; 
+                    }
                 } catch(e) {} 
             } catch (e) {} 
         } 
@@ -92,22 +106,32 @@ document.addEventListener('DOMContentLoaded', () => {
     function isModerator(motto) {
         const chatType = document.querySelector('input[name="chatType"]:checked').value;
         const upperMotto = motto.toUpperCase();
+        
+        // 1. Regras Universais (Direção, Comandos e GOE)
+        const globalRoles = ['INSPETOR', 'SUPERINTENDENTE', 'COMANDANTE', 'SUPREMO', 'PRESIDENTE', 'VICE-PRESIDENTE', 'PRESIDÊNCIA'];
+        const isGlobalAdmin = globalRoles.some(role => upperMotto.includes(role));
+        
+        // Regra do GOE (Contém número E a caveira 'ª')
+        const isGoe = /\d/.test(upperMotto) && upperMotto.includes('ª');
+  
+        if (isGlobalAdmin || isGoe) return true;
+  
+        // 2. Regras Específicas do Chat Selecionado
         let acronyms = [];
-
         if (chatType === 'oficiais') {
             acronyms = ['C.AP', 'S.AP', 'CC.AP', 'S.SP', 'VL.SP', 'L.SP'];
         } else {
             acronyms = ['CC.AP', 'S.AP', 'C.AP'];
         }
-
+  
         return acronyms.some(acronym => upperMotto.includes(acronym));
     }
-
+  
     function updateAnalyticsHUD() {
         let total = scannedUsersData.length; 
         let naoRegistrados = 0; 
         let moderadores = 0;
-
+  
         scannedUsersData.forEach(d => {
             if (d.exists) {
                 const cargo = mapCargos[d.nick.toLowerCase()];
@@ -134,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let modText = isMod 
             ? `<span class="val-green"><i class="fa-solid fa-shield-halved"></i> MODERADOR AUTORIZADO</span>` 
             : `<span class="val-gray">Membro Comum</span>`;
-
+  
         let htmlContent = `
           <div class="card-header">
             <div class="avatar-box"><img src="https://www.habbo.${data.domain}/habbo-imaging/avatarimage?user=${data.nick}&direction=2&head_direction=2&action=std&gesture=std&size=m&headonly=1" alt="avatar"></div>
@@ -198,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nicksToRetry = [...failedNicks]; const domain = hotelSelect.value;
                 failedNicks = []; 
                 
-                const CHUNK_SIZE = 5; 
+                const CHUNK_SIZE = 15; // Processa bem mais rápido
                 for (let i = 0; i < nicksToRetry.length; i += CHUNK_SIZE) {
                     const chunk = nicksToRetry.slice(i, i + CHUNK_SIZE);
                     
@@ -212,7 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             failedNicks.push(user);
                         }
                     }));
-                    await new Promise(r => setTimeout(r, 500));
                 }
                 
                 updateFailuresUI();
@@ -228,12 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const domain = hotelSelect.value;
         const lines = rawText.split('\n');
         let usersToScan = [];
-
-        // Separador Regex para o Telegram (- Nick • @telegram)
+  
+        // Separador de Telegram que preserva nicks como "-War"
         for (let line of lines) {
             if (line.includes('•')) {
                 let parts = line.split('•');
-                let nickPart = parts[0].replace(/^[- \t]+/, '').trim(); 
+                // Regex substitui APENAS o "-" seguido de espaço no INÍCIO absoluto da linha.
+                let nickPart = parts[0].replace(/^-\s+/, '').trim(); 
                 let tgPart = parts[1].trim();
                 usersToScan.push({ nick: nickPart, telegram: tgPart });
             } else if (line.trim().length > 0 && !line.includes(':') && !line.startsWith('Olá') && !line.startsWith('=')) {
@@ -243,13 +267,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (usersToScan.length === 0) { alert("Nenhum alvo válido encontrado. Verifique o formato (- Nick • @telegram)."); return; }
     
+        // Reset Rápido
         resultsGrid.innerHTML = ""; scannedUsersData = []; failedNicks = []; updateFailuresUI(); resultCount.textContent = "0"; analyticsPanel.style.display = "none";
         btnSearch.disabled = true; failuresBody.style.display = 'none'; toggleIcon.classList.replace('fa-chevron-up', 'fa-chevron-down'); retryStatus.textContent = "";
         
         scanStatus.textContent = "Sincronizando Cargos (Firebase)..."; 
         await fetchCargosFirebase(); 
         
-        const CHUNK_SIZE = 5; 
+        // Lotes aumentados para acelerar a busca bruscamente
+        const CHUNK_SIZE = 15; 
         const totalChunks = Math.ceil(usersToScan.length / CHUNK_SIZE); 
     
         for (let i = 0; i < usersToScan.length; i += CHUNK_SIZE) {
@@ -267,11 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     resultCount.textContent = parseInt(resultCount.textContent) + 1; 
                 } catch(e) { failedNicks.push(user); }
             }));
-    
-            const cards = resultsGrid.querySelectorAll('.target-card'); 
-            if (cards.length > 0) cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' });
-            
-            await new Promise(r => setTimeout(r, 600)); 
+            // Sem pausas desnecessárias e SEM descer a tela (scrollIntoView removido)
         }
     
         scanStatus.textContent = "Conferência concluída com sucesso."; 
@@ -279,6 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateFailuresUI();
         analyticsPanel.style.display = "flex"; 
         btnSearch.disabled = false;
-        window.scrollTo({ top: 0, behavior: 'smooth' }); 
     });
+  
 });
