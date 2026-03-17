@@ -101,4 +101,3 @@ textarea:focus { outline: none; border-color: var(--text-main); }
 .val-green { color: var(--status-ok); }
 .val-red { color: var(--status-err); }
 .val-gray { color: var(--text-muted); }
-.val-warn { color: var(--status-warn); }
